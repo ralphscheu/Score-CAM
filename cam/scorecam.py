@@ -14,10 +14,11 @@ class ScoreCAM(BaseCAM):
         super().__init__(model_dict)
 
     def forward(self, input, class_idx=None, retain_graph=False):
-        b, c, h, w = input.size()
+        b, t, c, h, w = input.size()  # t: time series
         
         # predication on raw input
         logit = self.model_arch(input).cuda()
+        # print("logit:", logit)
         
         if class_idx is None:
             predicted_class = logit.max(1)[-1]
@@ -25,6 +26,7 @@ class ScoreCAM(BaseCAM):
         else:
             predicted_class = torch.LongTensor([class_idx])
             score = logit[:, class_idx].squeeze()
+            # print("score:", score)
         
         logit = F.softmax(logit)
 
@@ -37,8 +39,9 @@ class ScoreCAM(BaseCAM):
         score.backward(retain_graph=retain_graph)
         activations = self.activations['value']
         b, k, u, v = activations.size()
+        # print("activations in conv3 layer:", activations.size())
         
-        score_saliency_map = torch.zeros((1, 1, h, w))
+        score_saliency_map = torch.zeros((t, 1, h, w))
 
         if torch.cuda.is_available():
           activations = activations.cuda()
@@ -56,12 +59,17 @@ class ScoreCAM(BaseCAM):
               
               # normalize to 0-1
               norm_saliency_map = (saliency_map - saliency_map.min()) / (saliency_map.max() - saliency_map.min())
+              
+            #   print("norm_saliency_map:", norm_saliency_map.size())
 
               # how much increase if keeping the highlighted region
               # predication on masked input
               output = self.model_arch(input * norm_saliency_map)
               output = F.softmax(output)
               score = output[0][predicted_class]
+              
+            #   print("score:", score, "output:", output)
+            #   print("saliency_map:", saliency_map.size())
 
               score_saliency_map +=  score * saliency_map
                 

@@ -234,16 +234,14 @@ def format_for_plotting(tensor):
 
     """
 
+    print("tensor:", tensor.size())
     has_batch_dimension = len(tensor.shape) == 4
     formatted = tensor.clone()
 
     if has_batch_dimension:
-        formatted = tensor.squeeze(0)
+        formatted = tensor.squeeze()
 
-    if formatted.shape[0] == 1:
-        return formatted.squeeze(0).detach()
-    else:
-        return formatted.permute(1, 2, 0).detach()
+    return formatted
 
 
 def visualize(input_, gradients, save_path=None, cmap='viridis', alpha=0.7):
@@ -296,7 +294,7 @@ def basic_visualize(input_, gradients, save_path=None, weight=None, cmap='viridi
             alpha: Defaults to be 0.7.
 
     """
-    input_ = format_for_plotting(denormalize(input_))
+    input_ = format_for_plotting(input_)
     gradients = format_for_plotting(standardize_and_clip(gradients))
 
     subplots = [
@@ -317,6 +315,150 @@ def basic_visualize(input_, gradients, save_path=None, weight=None, cmap='viridi
 
     if save_path is not None:
         plt.savefig(save_path)
+
+
+
+
+
+
+LEAD_NAMES = ['I', 'II', 'III', 'aVF', 'aVR', 'aVL', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
+
+
+def ecg_visualize(input_, gradients, save_path=None, weight=None, cmap='viridis', alpha=0.7):
+
+    """ Method to plot the explanation.
+
+        # Arguments
+            input_: Tensor. Original image.
+            gradients: Tensor. Saliency map result.
+            save_path: String. Defaults to None.
+            cmap: Defaults to be 'viridis'.
+            alpha: Defaults to be 0.7.
+
+    """
+    
+    import torch
+    import numpy as np
+    
+    input_, gradients = input_.detach().cpu(), gradients.detach().cpu()
+    
+    # print("input_:", input_.size())
+    # print("gradients:", gradients.size())
+    
+    num_leads = input_.size(1)
+    num_steps = input_.size(0)
+    step_size = 1
+    step_width= 2.5
+    
+    # stitch together input image
+    full_image = input_[0]
+    full_gradients = gradients[0]
+    for t in range(num_steps-1):
+        input_t = input_[t+1]
+        full_image = torch.cat((full_image, input_t[:, :, -10:]), dim=2)
+        input_grad = gradients[t+1]
+        full_gradients = torch.cat((full_gradients, input_grad[:, :, -10:]), dim=2)
+    # print("full_image:", full_image.size(), "full_gradients:", full_gradients.size())
+    
+    full_gradients = full_gradients.squeeze(0)
+    full_gradients = standardize_and_clip(full_gradients)
+    
+    fig, axs = plt.subplots(3, 4, sharex=True, sharey=True, figsize=(14,6))
+    for i, _ax in enumerate(axs.T.ravel()):
+        _im = full_image[i]
+        _grad = full_gradients
+        
+        # print("_im:", _im.size(), "_grad:", _grad.size())
+        
+        _ax.set_axis_off()
+        _ax.set_title(f"Lead {LEAD_NAMES[i]}")
+        
+        _ax.imshow(_im, interpolation='nearest', aspect='auto')
+        _ax.imshow(_grad, interpolation='antialiased', aspect='auto', cmap=cmap, alpha=0.6)
+            
+        
+        # input_ = format_for_plotting(input_)
+        # gradients = format_for_plotting(standardize_and_clip(gradients))
+        
+            # lead_im = sample_im[i]
+            # ax.imshow(input_, cmap='gray', aspect='auto', interpolation=None)
+            # ax.set_xlim([0, lead_im.size(1)])
+                        
+            # ax.axes.set_title(f"Lead {LEAD_NAMES[i]}")
+            # ax.axes.yaxis.set_ticks([])
+            # #ax.axes.xaxis.set_ticks([])
+            # ax.axes.set_xticklabels(range(0, ms_to_plot//1000+1, 1))
+    
+    plt.tight_layout(pad=.5)
+    fig.show()
+    
+    
+    
+    
+    
+    
+    
+    # fig, axs = plt.subplots(num_leads, num_steps, sharex=True, sharey=True, figsize=(14, 14))
+    # for lead in range(num_leads):
+    #     for t in range(num_steps):
+    #         _im = input_[t, lead]
+    #         _grad = gradients[t]
+            
+    #         # print("_im:", _im.size(), "_grad:", _grad.size())
+            
+    #         _ax = axs[lead, t]
+            
+    #         _ax.imshow(_im)
+    #         _ax.imshow(_grad, cmap=cmap, alpha=0.6)
+            
+        
+    #     # input_ = format_for_plotting(input_)
+    #     # gradients = format_for_plotting(standardize_and_clip(gradients))
+        
+    #         # lead_im = sample_im[i]
+    #         # ax.imshow(input_, cmap='gray', aspect='auto', interpolation=None)
+    #         # ax.set_xlim([0, lead_im.size(1)])
+                        
+    #         # ax.axes.set_title(f"Lead {LEAD_NAMES[i]}")
+    #         # ax.axes.yaxis.set_ticks([])
+    #         # #ax.axes.xaxis.set_ticks([])
+    #         # ax.axes.set_xticklabels(range(0, ms_to_plot//1000+1, 1))
+    
+    # # plt.tight_layout()
+    # fig.show()
+        
+
+    
+    
+
+    # subplots = [
+    #     ('Saliency map across RGB channels', [(gradients, None, None)]),
+    #     ('Overlay', [(input_, None, None), (gradients, cmap, alpha)])
+    # ]
+
+    # num_subplots = len(subplots)
+
+    # fig = plt.figure(figsize=(4, 4))
+
+    # for i, (title, images) in enumerate(subplots):
+    #     ax = fig.add_subplot(1, num_subplots, i + 1)
+    #     ax.set_axis_off()
+
+    #     for image, cmap, alpha in images:
+    #         ax.imshow(image, cmap=cmap, alpha=alpha)
+
+    # if save_path is not None:
+    #     plt.savefig(save_path)
+
+
+
+
+
+
+
+
+
+
 
 
 def find_resnet_layer(arch, target_layer_name):
@@ -593,7 +735,9 @@ def find_layer(arch, target_layer_name):
             - **target_layer - **: Found layer. This layer will be hooked to get forward/backward pass information.
     """
 
-    if target_layer_name.split('_') not in arch._modules.keys():
+    #if target_layer_name.split('_') not in arch._modules.keys():
+    #    raise Exception("Invalid target layer name.")
+    if target_layer_name not in arch._modules.keys():
         raise Exception("Invalid target layer name.")
     target_layer = arch._modules[target_layer_name]
     return target_layer
